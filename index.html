@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+      <head>
+        <meta content='text/html;charset=utf-8' http-equiv='Content-Type'>
+        <meta content='utf-8' http-equiv='encoding'>
+        <link rel="stylesheet" href="./css/style.css">
+        <title>Kunle Adeyinka - Visualize Data with a Heat Map</title>
+        <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/d3/4.3.0/d3.min.js"></script>
+        <script src="https://code.jquery.com/jquery-3.2.1.min.js"></script>
+      </head>
+      <body>
+        <div style="position: relative">
+            <div style="position: absolute; top: 0; left: -1;" class="target1"></div>
+            <div style="position: absolute; top: 0; left: 1; opacity: 0.5" class="target2"></div>
+        </div>
+        <div id="info"></div>
+        <script>
+            $(document).bind('mousemove', function(e){
+              $('#info').css({
+                 left:  e.pageX + 20,
+                 top:   e.pageY
+              })
+            });
+            var dataUrl = 'https://raw.githubusercontent.com/FreeCodeCamp/ProjectReferenceData/master/global-temperature.json';
+
+            heatMap(dataUrl, '.target1', false);
+            heatMap(dataUrl, '.target2', true);
+            d3.select("#info").style("visibility", "hidden");
+
+            function heatMap(url, target, isCopy) {
+              var margin = {top: 120, right: 20, bottom: 100, left: 90};
+              var width = window.innerWidth - margin.left - margin.right;
+              var height = window.innerHeight - margin.top - margin.bottom - 75;
+              var buckets = 11;
+              var months = ['January', 'February', 'March', 'April', 'May', 'June',
+                            'July', 'August', 'September', 'October', 'November', 'December'];
+              var colors = ['#5E4FA2', '#3288BD', '#66C2A5', '#ABDDA4', '#E6F598', '#FFFFBF',
+                            '#FEE08B', '#FDAE61', '#F46D43', '#D53E4F', '#9E0142'];
+
+              var svg = initSVG(target);
+
+              d3.json(dataUrl, function(err,json) {
+                  var scale = {x: '', y: '', z: '', xAxis: '', yAxis: ''};
+                  var data = json.monthlyVariance, baseTemp = json.baseTemperature;
+                  var grid = {width: Math.ceil(width / 261), height: Math.ceil(height / 12) };
+
+                  scale.z = d3.scaleQuantile().domain([baseTemp + d3.min(data, function (d) { return d.variance }),
+                              baseTemp + d3.max(data, function (d) { return d.variance; })]).range(colors);
+
+                  for(var i=0;i<data.length;i++){
+                    if(i!=data.length-1){
+                      data[i].next = data[i+1].variance;
+                    }else{
+                      data[i].next = data[i].variance;
+                    }
+                  }
+
+                  scale.x = d3.scaleLinear().domain([1753, 2015]).range([0, width]);
+                  scale.xAxis = d3.axisBottom(scale.x).tickSizeOuter(0).tickFormat(d3.format("d"));
+
+                  scale.y = d3.scaleBand().domain(months).range([0, height]);
+                  scale.yAxis = d3.axisLeft(scale.y).tickSize(0);
+
+                  var gradient = svg.selectAll(".defs").data(data).enter().append("defs").append("linearGradient")
+                                    .attr("x1", "0%").attr("y1", "0%").attr("x2", "0%").attr("y2", "100%")
+                                    .attr("id", function(d, i){ return 'def-' + i });
+                  gradient.append("stop").attr("offset", "0%").attr("stop-color", function(d){ return scale.z(baseTemp + d.variance); });
+                  gradient.append("stop").attr("offset", "100%").attr("stop-color", function(d){ return scale.z(baseTemp + d.next); });
+
+                  var tile = svg.selectAll(".tile").data(data).enter().append("rect").on("mouseover", function(d, i){ onMouseOver.call(this, d, i, baseTemp, isCopy); })
+                                .on("mouseout", function(d, i){ onMouseOut.call(this, d, i, isCopy); })
+                                .attr("x", function(d) { return scale.x(d.year); })
+                                .attr("y", function(d) { return scale.y(months[d.month-1]); })
+                                .attr("class", "hour bordered").attr("width", grid.width).attr("height", grid.height)
+                                .style("fill", function(d, i){
+                                    return "url(#def-" + i + ")";
+                                });
+
+                  if(! isCopy) {
+                    svg.append("g").attr("class", "x axis").attr("transform", "translate(0," + height + ")").call(scale.xAxis);
+                    svg.append("g").attr("class", "y axis").call(scale.yAxis);
+                    svg.append("g").attr("class", "title-3").append("text").attr("y", -55).attr("x", - height / 2).attr("transform", "rotate(-90)")
+                       .text("Months");
+
+                    appendTitle("Years", width / 2, height + 40, "title-3");
+                    appendTitle("Monthly Global Land-Surface Temperature", width / 2, -80, "title");
+                    appendTitle("1753 - 2015", width / 2, -50, "title-2");
+                    appendTitle("Temperatures are in Celsius and reported as anomalies relative to the Jan 1951-Dec 1980 average.", width / 2, -30, "label");
+                    appendTitle("Estimated Jan 1951-Dec 1980 absolute temperature ℃: 8.66 +/- 0.07", width / 2, -15, "label");
+
+                    for(var i=0;i<colors.length;i++){
+                      svg.append("g").attr("class", "title-3").append("rect").attr("x", width - (40 * (i+1)))
+                         .attr("y", height + 60).attr("width", 40).attr("height", 20).attr("fill", colors[colors.length - 1 - i]);
+                      svg.append("g").attr("class", "label").append("text").attr("x", width - (40 * (i+1)) + 20).attr("y", height + 90)
+                         .text(- Math.round((i-5)*6 / 5 * 10)/10);
+                    }
+                  }
+
+              });
+
+              function initSVG(target){
+                var svg = d3.select(target).append('svg').attr("width", width + margin.left + margin.right)
+                            .attr("height", height + margin.top + margin.bottom).append("g")
+                            .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+                return svg;
+              };
+
+              function appendTitle(txt, x, y, classname){
+                svg.append("g").attr("class", classname).append("text").attr("x", x).attr("y", y).text(txt);
+              };
+
+              function onMouseOver(d, i, baseTemp, isCopy){
+                if(isCopy) {
+                  var finalTemp = Math.round((baseTemp + d.variance)*1000)/1000;
+                  var variance = (d.variance > 0) ? '+' + d.variance + '&deg;C</span>' : d.variance + '&deg;C</span>';
+                  d3.select("#info").html(d.year + ' - ' + months[d.month] + '<br>' + finalTemp + '&deg;C<br><span class="sub">' + variance)
+                    .style("visibility", "visible");
+                }
+              };
+
+              function onMouseOut(d, i, isCopy){
+                if(isCopy) {
+                  d3.select("#info").style("visibility", "hidden");
+                }
+              };
+
+            };
+
+
+
+
+
+
+
+
+
+
+
+
+        </script>
+      </body>
+</html>
